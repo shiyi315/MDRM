@@ -1,0 +1,83 @@
+##########################################################################
+### R sample code for fitting mixture drug-count response model (MDRM) ###
+##########################################################################
+
+### input
+### For each ADE dataset, we have 4 inputs/columns: Drug_combination, N, Y, X;
+### Drug_combination: drug ingredient names for j_th i-drug combinations;
+### N: total frequencies of patients who take j_th i-drug combinations in ED visit; 
+### Y: total frequencies of patients who take j_th i-drug combination in ED visit related to ADE; 
+### X: the number of drug ingredients in j_th i-drug combination, i.e., X=1,2,3,4;
+
+### output
+### We generate 5 parameters in MDRM (beta0,beta1,pi_2,pi_3,pi_4) with beta1>0;
+### by EM algorithm as following; See Appendix B for model details.
+
+Count=table(X)
+# set initial MDRM parameters
+Parameter=c(-1,-2,0,0,0,0)
+Parameter.new=Parameter
+i=1
+
+# complete negative log likelihood
+fun_EM = function(fun_para)
+{
+ fun_beta_0=fun_para[1] # beta0
+ fun_beta_1=exp(fun_para[2]) # beta1>0
+ 
+ fun_P0=exp(fun_beta_0)/(1+exp(fun_beta_0)) # p0 represents the constant ADE risk curve
+ fun_P1=exp(fun_beta_0+fun_beta_1*(X-1))/(1+exp(fun_beta_0+fun_beta_1*(X-1))) # p1 represents the drug-count response ADE risk curve
+
+ ll=part_A*dbinom(Y,N,fun_P1,log=TRUE) + part_B*dbinom(Y,N,fun_P0,log=TRUE)
+ ll=-sum(ll)
+ ll  
+}
+
+diff=your_initial_difference
+threshold=your_threshold
+while(diff>threshold)
+{
+ null=Parameter[1] # beta0
+ p_null=exp(null)/(1+exp(null)) 
+
+ dose=null+exp(Parameter[2])*(X-1)
+ p_dose=exp(dose)/(1+exp(dose)) 
+
+ pi_1=exp(Parameter[3])/(1+exp(Parameter[3]))
+ pi_2=exp(Parameter[4])/(1+exp(Parameter[4]))
+ pi_3=exp(Parameter[5])/(1+exp(Parameter[5]))
+ pi_4=exp(Parameter[6])/(1+exp(Parameter[6]))
+
+ pi_long=rep(c(pi_1,pi_2,pi_3,pi_4),as.numeric(Count))
+
+ ### E-step
+
+ W=1/(((1-pi_long)/pi_long)*exp(dbinom(Y,N,p_null,log=TRUE)-dbinom(Y,N,p_dose,log=TRUE))+1)
+
+ ### M-step
+ part_A=W
+ part_B=1-W
+
+ pi_1_W=mean(W[X==1])
+ pi_2_W=mean(W[X==2])
+ pi_3_W=mean(W[X==3])
+ pi_4_W=mean(W[X==4])
+
+ res_M=nlminb(Parameter,fun_EM)
+ Parameter.new[1]=res_M$par[1]
+ Parameter.new[2]=res_M$par[2]
+ Parameter.new[3]=log(pi_1_W/(1-pi_1_W))
+ Parameter.new[4]=log(pi_2_W/(1-pi_2_W))
+ Parameter.new[5]=log(pi_3_W/(1-pi_3_W))
+ Parameter.new[6]=log(pi_4_W/(1-pi_4_W))
+
+ diff=max(abs(Parameter-Parameter.new))
+ i=i+1
+ cat("Iter = ",i,"; Diff = ",diff,"\n")
+ Parameter = Parameter.new
+}
+
+# EM results for MDRM 5 parameters stored in res_EM
+res_EM = c(Parameter[1], exp(Parameter[2]),exp(Parameter[4])/(1+exp(Parameter[4])), 
+exp(Parameter[5])/(1+exp(Parameter[5])), exp(Parameter[6])/(1+exp(Parameter[6])))
+names(res_EM)=c("beta0","beta1", "Pi_2","Pi_3","Pi_4")
